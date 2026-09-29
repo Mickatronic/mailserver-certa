@@ -104,6 +104,7 @@ if (is_post()) {
             $erreurs[] = 'Administrateur : ' . $ex->getMessage();
         } catch (PDOException $ex) {
             $pdo->rollBack();
+            db_log_exception($ex, $etab ? 'Modification établissement' : 'Création établissement');
             $erreurs[] = db_error_message($ex);
         }
     }

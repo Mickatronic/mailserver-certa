@@ -128,6 +128,7 @@ if (is_post()) {
                 } catch (ValidationException $ex) {
                     $resultat['erreurs'][] = ['ligne' => $num, 'nom' => "$prenom $nom", 'motif' => $ex->getMessage()];
                 } catch (PDOException $ex) {
+                    db_log_exception($ex, "Import utilisateur ligne $num");
                     $resultat['erreurs'][] = ['ligne' => $num, 'nom' => "$prenom $nom", 'motif' => db_error_message($ex)];
                 }
             }

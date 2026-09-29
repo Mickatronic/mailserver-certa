@@ -34,6 +34,10 @@ l'hôte interne `db`.
 |----------|-------------|----------------|
 | `DB_PASSWORD` | Oui | Mot de passe fort et unique pour l'utilisateur MariaDB `certa_app`. |
 | `DB_ROOT_PASSWORD` | Oui | Mot de passe fort et unique pour l'administrateur MariaDB. |
+| `SUPERADMIN_EMAIL` | Oui | Adresse email du compte super administrateur principal. |
+| `SUPERADMIN_FIRST_NAME` | Oui | Prénom du super administrateur principal. |
+| `SUPERADMIN_LAST_NAME` | Oui | Nom du super administrateur principal. |
+| `SUPERADMIN_PASSWORD` | Oui | Mot de passe initial, au moins 10 caractères avec minuscule, majuscule et chiffre. À enregistrer comme secret Dokploy. |
 | `MAIL_DOMAIN` | Non | Domaine des emails UAI, par défaut `reseaucerta.org`. |
 | `BASE_URL` | Non | Laisser vide pour une application servie à la racine du domaine. Sinon, saisir le chemin sans slash final, par exemple `/certa`. |
 | `UAI_VERIFY_KEY` | Non | Vérification de la clé UAI, `true` par défaut. |
@@ -51,8 +55,21 @@ les migrations documentées ci-dessus manuellement ; les scripts
 `docker-entrypoint-initdb.d` ne se rejouent pas sur un volume déjà initialisé.
 
 Après le premier déploiement, créer le super administrateur depuis le terminal
-du conteneur `app` avec
-`php scripts/create_superadmin.php admin@reseaucerta.org Prénom Nom`.
+du conteneur `app` avec `php scripts/create_superadmin.php` : le script lit les
+quatre variables `SUPERADMIN_*` définies dans Dokploy. Il applique le mot de
+passe fourni et demande son changement à la première connexion. N'exécuter cette
+commande qu'à la création ou lors d'une réinitialisation volontaire : elle
+réinitialise le mot de passe du compte portant cette adresse à chaque exécution.
+Les variables sont disponibles dans le conteneur pour les commandes CLI exécutées
+depuis le terminal Dokploy.
+
+Si l'application a été déployée avant l'ajout du volume initialisé par les scripts
+SQL, ces scripts ne seront pas rejoués sur le volume existant. En cas d'erreur
+d'accès aux tables `mailserver`, appliquer une fois dans MariaDB :
+`GRANT ALL PRIVILEGES ON mailserver.* TO 'certa_app'@'%';`.
+Les erreurs SQL interceptées lors de la création/modification sont consignées
+dans les logs du conteneur `app` avec leur SQLSTATE, code MariaDB et message.
+
 Ce Compose héberge l'application et MariaDB, pas les services Postfix/Dovecot :
 ceux-ci doivent pouvoir joindre la base `mailserver` et lire les tables virtuelles.
 

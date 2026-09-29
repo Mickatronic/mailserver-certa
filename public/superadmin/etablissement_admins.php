@@ -32,6 +32,7 @@ if (is_post()) {
             $erreur = $ex->getMessage();
         } catch (PDOException $ex) {
             $pdo->rollBack();
+            db_log_exception($ex, 'Création administrateur établissement');
             $erreur = db_error_message($ex);
         }
     } else {

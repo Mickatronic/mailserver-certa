@@ -60,3 +60,15 @@ function db_error_message(PDOException $e): string
         default                     => 'Erreur de base de données.',
     };
 }
+
+function db_log_exception(PDOException $e, string $context): void
+{
+    $info = $e->errorInfo ?? [];
+    error_log(sprintf(
+        '[database] %s; SQLSTATE=%s; driver_code=%s; message=%s',
+        $context,
+        (string)($info[0] ?? $e->getCode()),
+        (string)($info[1] ?? ''),
+        (string)($info[2] ?? $e->getMessage())
+    ));
+}

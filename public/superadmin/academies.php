@@ -16,6 +16,7 @@ if (is_post()) {
             journal_action('ACADEMIE_DELETE', null, $form['code']);
             flash('success', 'Académie supprimée.');
         } catch (PDOException $ex) {
+            db_log_exception($ex, 'Suppression académie');
             flash('error', db_error_message($ex));
         }
         redirect('superadmin/academies.php');
@@ -37,6 +38,7 @@ if (is_post()) {
             flash('success', 'Académie enregistrée.');
             redirect('superadmin/academies.php');
         } catch (PDOException $ex) {
+            db_log_exception($ex, $form['id'] ? 'Modification académie' : 'Création académie');
             $erreur = db_error_message($ex);
         }
     }

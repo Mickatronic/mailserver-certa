@@ -8,6 +8,7 @@ RUN apt-get update \
     && a2enmod rewrite headers
 
 COPY docker/apache-vhost.conf /etc/apache2/sites-available/000-default.conf
+COPY docker/php.ini /usr/local/etc/php/conf.d/zz-certa.ini
 COPY --chown=www-data:www-data . /var/www/html
 
 EXPOSE 80

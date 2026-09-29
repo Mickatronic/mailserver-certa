@@ -13,6 +13,10 @@ services:
       DB_NAME: reseau_certa
       DB_USER: certa_app
       DB_PASSWORD: ${DB_PASSWORD:?Set a strong DB_PASSWORD in Dokploy}
+      SUPERADMIN_EMAIL: ${SUPERADMIN_EMAIL:?Set the main administrator email in Dokploy}
+      SUPERADMIN_FIRST_NAME: ${SUPERADMIN_FIRST_NAME:?Set the main administrator first name in Dokploy}
+      SUPERADMIN_LAST_NAME: ${SUPERADMIN_LAST_NAME:?Set the main administrator last name in Dokploy}
+      SUPERADMIN_PASSWORD: ${SUPERADMIN_PASSWORD:?Set a strong main administrator password in Dokploy}
       MAIL_DOMAIN: ${MAIL_DOMAIN:-reseaucerta.org}
       BASE_URL: ${BASE_URL:-}
       UAI_VERIFY_KEY: ${UAI_VERIFY_KEY:-true}

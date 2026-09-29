@@ -62,6 +62,7 @@ if (is_post()) {
         $erreur = $ex->getMessage();
     } catch (PDOException $ex) {
         $pdo->rollBack();
+        db_log_exception($ex, $user ? 'Modification utilisateur' : 'Création utilisateur');
         $erreur = db_error_message($ex);
     }
 }
