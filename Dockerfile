@@ -9,6 +9,11 @@ RUN apt-get update \
 
 COPY docker/apache-vhost.conf /etc/apache2/sites-available/000-default.conf
 COPY docker/php.ini /usr/local/etc/php/conf.d/zz-certa.ini
+COPY docker/entrypoint.sh /usr/local/bin/certa-entrypoint
 COPY --chown=www-data:www-data . /var/www/html
+RUN chmod 755 /usr/local/bin/certa-entrypoint
+
+ENTRYPOINT ["/usr/local/bin/certa-entrypoint"]
+CMD ["apache2-foreground"]
 
 EXPOSE 80

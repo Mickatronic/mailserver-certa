@@ -37,6 +37,7 @@ DROP TRIGGER IF EXISTS trg_utilisateur_bi;
 DROP TRIGGER IF EXISTS trg_utilisateur_bu;
 DROP TABLE IF EXISTS journal_action;
 DROP TABLE IF EXISTS journal_connexion;
+DROP TABLE IF EXISTS superadmin_bootstrap;
 DROP TABLE IF EXISTS utilisateur_role;
 DROP TABLE IF EXISTS utilisateur;
 DROP TABLE IF EXISTS role;
@@ -215,6 +216,18 @@ CREATE TABLE utilisateur_role (
 
 
 -- =====================================================
+-- MARQUEUR DE PROVISIONNEMENT DU SUPER ADMIN DOCKER
+-- =====================================================
+
+CREATE TABLE superadmin_bootstrap (
+    email       VARCHAR(255) NOT NULL,
+    created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (email)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+-- =====================================================
 -- JOURNAL DES CONNEXIONS (tableaux de bord des accès)
 -- =====================================================
 
@@ -287,14 +300,17 @@ CREATE TRIGGER trg_utilisateur_bi
 BEFORE INSERT ON utilisateur
 FOR EACH ROW
 BEGIN
-    DECLARE v_uai CHAR(8);
+    DECLARE v_uai CHAR(8) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    DECLARE v_suffix VARBINARY(100);
 
     SET NEW.email = LOWER(TRIM(NEW.email));
 
     IF NEW.etablissement_id IS NOT NULL THEN
         SELECT uai INTO v_uai FROM etablissement WHERE id = NEW.etablissement_id;
+        SET v_suffix = CONCAT('@', LOWER(v_uai), '.reseaucerta.org');
 
-        IF NEW.email NOT REGEXP CONCAT('^[a-z0-9._-]+@', LOWER(v_uai), '\\.reseaucerta\\.org$') THEN
+        IF SUBSTRING_INDEX(NEW.email, '@', 1) NOT REGEXP '^[a-z0-9._-]+$'
+           OR BINARY RIGHT(NEW.email, CHAR_LENGTH(v_suffix)) <> v_suffix THEN
             SIGNAL SQLSTATE '45000'
                 SET MESSAGE_TEXT = 'Email invalide : attendu prenom.nom@<uai>.reseaucerta.org';
         END IF;
@@ -305,14 +321,17 @@ CREATE TRIGGER trg_utilisateur_bu
 BEFORE UPDATE ON utilisateur
 FOR EACH ROW
 BEGIN
-    DECLARE v_uai CHAR(8);
+    DECLARE v_uai CHAR(8) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    DECLARE v_suffix VARBINARY(100);
 
     SET NEW.email = LOWER(TRIM(NEW.email));
 
     IF NEW.etablissement_id IS NOT NULL THEN
         SELECT uai INTO v_uai FROM etablissement WHERE id = NEW.etablissement_id;
+        SET v_suffix = CONCAT('@', LOWER(v_uai), '.reseaucerta.org');
 
-        IF NEW.email NOT REGEXP CONCAT('^[a-z0-9._-]+@', LOWER(v_uai), '\\.reseaucerta\\.org$') THEN
+        IF SUBSTRING_INDEX(NEW.email, '@', 1) NOT REGEXP '^[a-z0-9._-]+$'
+           OR BINARY RIGHT(NEW.email, CHAR_LENGTH(v_suffix)) <> v_suffix THEN
             SIGNAL SQLSTATE '45000'
                 SET MESSAGE_TEXT = 'Email invalide : attendu prenom.nom@<uai>.reseaucerta.org';
         END IF;

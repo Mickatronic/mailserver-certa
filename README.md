@@ -55,13 +55,14 @@ les migrations documentées ci-dessus manuellement ; les scripts
 `docker-entrypoint-initdb.d` ne se rejouent pas sur un volume déjà initialisé.
 
 Après le premier déploiement, créer le super administrateur depuis le terminal
-du conteneur `app` avec `php scripts/create_superadmin.php` : le script lit les
-quatre variables `SUPERADMIN_*` définies dans Dokploy. Il applique le mot de
-passe fourni et demande son changement à la première connexion. N'exécuter cette
-commande qu'à la création ou lors d'une réinitialisation volontaire : elle
-réinitialise le mot de passe du compte portant cette adresse à chaque exécution.
-Les variables sont disponibles dans le conteneur pour les commandes CLI exécutées
-depuis le terminal Dokploy.
+du conteneur `app` avec `php scripts/create_superadmin.php` si vous souhaitez le
+créer/réinitialiser manuellement. Normalement, l'entrypoint du conteneur le
+provisionne automatiquement avant de démarrer Apache. Au premier démarrage, il
+crée le compte (ou synchronise son mot de passe avec `SUPERADMIN_PASSWORD` si ce
+compte existe déjà), puis enregistre ce provisionnement en base. Aux démarrages
+suivants, il conserve le mot de passe en base, afin de ne pas écraser un mot de
+passe modifié par l'administrateur. Le compte est actif et utilisable avec
+l'adresse et le mot de passe définis dans Dokploy.
 
 Si l'application a été déployée avant l'ajout du volume initialisé par les scripts
 SQL, ces scripts ne seront pas rejoués sur le volume existant. En cas d'erreur
@@ -69,6 +70,11 @@ d'accès aux tables `mailserver`, appliquer une fois dans MariaDB :
 `GRANT ALL PRIVILEGES ON mailserver.* TO 'certa_app'@'%';`.
 Les erreurs SQL interceptées lors de la création/modification sont consignées
 dans les logs du conteneur `app` avec leur SQLSTATE, code MariaDB et message.
+Pour corriger l'erreur de collation `1267` sur une base déjà initialisée,
+sauvegarder la base puis exécuter une fois
+`database/migration_trigger_collation.sql` dans la base `reseau_certa`. Les
+triggers ne sont pas recréés par le redéploiement de l'application. Appliquer
+cette migration avant de réessayer la création d'un compte utilisateur.
 
 Ce Compose héberge l'application et MariaDB, pas les services Postfix/Dovecot :
 ceux-ci doivent pouvoir joindre la base `mailserver` et lire les tables virtuelles.
