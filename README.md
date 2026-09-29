@@ -21,6 +21,41 @@ leurs étudiants et enseignants, avec adresses `prenom.nom@<UAI>.reseaucerta.org
    `php scripts/create_superadmin.php admin@reseaucerta.org Prénom Nom`
    → affiche un mot de passe temporaire à changer à la première connexion.
 
+## Déploiement avec Dokploy
+
+Créer une application Dokploy de type **Docker Compose** depuis le dépôt et
+utiliser `docker-compose.yml` à la racine. Ajouter les variables ci-dessous
+dans l'environnement Dokploy avant le premier déploiement. Dans la configuration
+de domaine Dokploy, router vers le service `app`, port `80`, et activer HTTPS.
+La base de données n'expose pas de port public ; le service PHP y accède via
+l'hôte interne `db`.
+
+| Variable | Obligatoire | Valeur / rôle |
+|----------|-------------|----------------|
+| `DB_PASSWORD` | Oui | Mot de passe fort et unique pour l'utilisateur MariaDB `certa_app`. |
+| `DB_ROOT_PASSWORD` | Oui | Mot de passe fort et unique pour l'administrateur MariaDB. |
+| `MAIL_DOMAIN` | Non | Domaine des emails UAI, par défaut `reseaucerta.org`. |
+| `BASE_URL` | Non | Laisser vide pour une application servie à la racine du domaine. Sinon, saisir le chemin sans slash final, par exemple `/certa`. |
+| `UAI_VERIFY_KEY` | Non | Vérification de la clé UAI, `true` par défaut. |
+| `IMPORT_MAX_SIZE` | Non | Taille maximale des imports CSV en octets, `2097152` (2 Mio) par défaut. |
+
+Le nom de la base applicative est `reseau_certa` et celui des tables Postfix est
+`mailserver` ; les deux sont créés dans MariaDB. Ne pas remplacer `DB_NAME` par
+`mailserver` : l'application l'utilise pour ses propres tables. Le volume
+`mariadb_data` conserve les données lors des redéploiements. Le script
+`database/schema.sql` est exécuté automatiquement uniquement lors de
+l'initialisation d'une base vide. Il contient des `DROP TABLE` pour permettre
+une installation initiale propre : **ne pas supprimer le volume de données en
+production**. Pour une base existante, sauvegarder les données puis appliquer
+les migrations documentées ci-dessus manuellement ; les scripts
+`docker-entrypoint-initdb.d` ne se rejouent pas sur un volume déjà initialisé.
+
+Après le premier déploiement, créer le super administrateur depuis le terminal
+du conteneur `app` avec
+`php scripts/create_superadmin.php admin@reseaucerta.org Prénom Nom`.
+Ce Compose héberge l'application et MariaDB, pas les services Postfix/Dovecot :
+ceux-ci doivent pouvoir joindre la base `mailserver` et lire les tables virtuelles.
+
 ## Rôles
 
 | Rôle | Rattachement | Droits |

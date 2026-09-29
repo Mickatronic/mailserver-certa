@@ -1,0 +1,45 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_HOST: db
+      DB_PORT: "3306"
+      DB_NAME: reseau_certa
+      DB_USER: certa_app
+      DB_PASSWORD: ${DB_PASSWORD:?Set a strong DB_PASSWORD in Dokploy}
+      MAIL_DOMAIN: ${MAIL_DOMAIN:-reseaucerta.org}
+      BASE_URL: ${BASE_URL:-}
+      UAI_VERIFY_KEY: ${UAI_VERIFY_KEY:-true}
+      IMPORT_MAX_SIZE: ${IMPORT_MAX_SIZE:-2097152}
+    expose:
+      - "80"
+
+  db:
+    image: mariadb:11.8
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: reseau_certa
+      MARIADB_USER: certa_app
+      MARIADB_PASSWORD: ${DB_PASSWORD:?Set a strong DB_PASSWORD in Dokploy}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?Set a strong DB_ROOT_PASSWORD in Dokploy}
+    volumes:
+      - mariadb_data:/var/lib/mysql
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./database/docker-init/02-mailserver-grants.sql:/docker-entrypoint-initdb.d/02-mailserver-grants.sql:ro
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - mariadb-admin ping --host=127.0.0.1 --user=root --password="$${MARIADB_ROOT_PASSWORD}" --silent
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+volumes:
+  mariadb_data:

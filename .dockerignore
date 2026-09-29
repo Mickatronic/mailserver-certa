@@ -1,0 +1,5 @@
+.git
+.vscode
+config/config.local.php
+**/config.local.php
+README.md
