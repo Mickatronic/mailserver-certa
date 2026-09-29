@@ -161,8 +161,19 @@ function attempt_login(string $email, string $password): array|string
         return 'Ce compte est désactivé. Contactez l\'administrateur de votre établissement.';
     }
 
-    if (password_needs_rehash($u['password_hash'], PASSWORD_DEFAULT)) {
-        db_exec('UPDATE utilisateur SET password_hash = ? WHERE id = ?', [password_hash($password, PASSWORD_DEFAULT), $uid]);
+    $pdo = db();
+    $pdo->beginTransaction();
+    try {
+        if (password_needs_rehash($u['password_hash'], PASSWORD_DEFAULT)) {
+            db_exec('UPDATE utilisateur SET password_hash = ? WHERE id = ?', [password_hash($password, PASSWORD_DEFAULT), $uid]);
+        }
+        user_mail_sync($uid, $password);
+        $pdo->commit();
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
     }
 
     session_regenerate_id(true);

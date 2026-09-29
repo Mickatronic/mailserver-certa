@@ -43,6 +43,7 @@ if (is_post()) {
             );
             $idsSupprimables = array_map('intval', array_column($cibles, 'id'));
             if ($idsSupprimables) {
+                user_mail_delete_many($idsSupprimables);
                 $deletePlaceholders = implode(',', array_fill(0, count($idsSupprimables), '?'));
                 db_exec(
                     "DELETE FROM utilisateur WHERE etablissement_id = ? AND id IN ($deletePlaceholders)",
@@ -93,9 +94,20 @@ if (is_post()) {
             break;
 
         case 'delete':
-            db_exec('DELETE FROM utilisateur WHERE id = ?', [$user['id']]);
-            journal_action('USER_DELETE', $etabId, $cible);
-            flash('success', "Utilisateur {$user['email']} supprimé.");
+            $pdo = db();
+            $pdo->beginTransaction();
+            try {
+                user_mail_delete_many([(int)$user['id']]);
+                db_exec('DELETE FROM utilisateur WHERE id = ?', [$user['id']]);
+                journal_action('USER_DELETE', $etabId, $cible);
+                $pdo->commit();
+                flash('success', "Utilisateur {$user['email']} supprimé.");
+            } catch (Throwable $e) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                throw $e;
+            }
             break;
     }
     redirect($back);

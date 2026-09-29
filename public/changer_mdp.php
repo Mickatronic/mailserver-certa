@@ -24,10 +24,21 @@ if (is_post()) {
     }
 
     if (!$erreurs) {
-        db_exec(
-            'UPDATE utilisateur SET password_hash = ?, doit_changer_mdp = 0 WHERE id = ?',
-            [password_hash($nouveau, PASSWORD_DEFAULT), $u['id']]
-        );
+        $pdo = db();
+        $pdo->beginTransaction();
+        try {
+            db_exec(
+                'UPDATE utilisateur SET password_hash = ?, doit_changer_mdp = 0 WHERE id = ?',
+                [password_hash($nouveau, PASSWORD_DEFAULT), $u['id']]
+            );
+            user_mail_sync((int)$u['id'], $nouveau);
+            $pdo->commit();
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $e;
+        }
         session_regenerate_id(true);
         flash('success', 'Mot de passe modifié.');
         redirect(home_path($u));

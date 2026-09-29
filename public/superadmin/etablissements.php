@@ -28,9 +28,20 @@ if (is_post()) {
                 flash('error', "Suppression impossible : $nb utilisateur(s) rattaché(s). Désactivez plutôt l'établissement.");
                 break;
             }
-            db_exec('DELETE FROM etablissement WHERE id = ?', [$id]);
-            journal_action('ETAB_DELETE', null, $etab['uai'] . ' ' . $etab['nom']);
-            flash('success', "Établissement « {$etab['nom']} » supprimé.");
+            $pdo = db();
+            $pdo->beginTransaction();
+            try {
+                etablissement_mail_domain_delete($id);
+                db_exec('DELETE FROM etablissement WHERE id = ?', [$id]);
+                journal_action('ETAB_DELETE', null, $etab['uai'] . ' ' . $etab['nom']);
+                $pdo->commit();
+                flash('success', "Établissement « {$etab['nom']} » supprimé.");
+            } catch (Throwable $e) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                throw $e;
+            }
             break;
     }
     redirect('superadmin/etablissements.php' . qs([]));

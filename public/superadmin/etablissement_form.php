@@ -74,6 +74,7 @@ if (is_post()) {
                             code_postal = ?, ville = ?, pays = ?, academie_id = ? WHERE id = ?',
                     [...$params, $id]
                 );
+                etablissement_mail_domain_sync(etablissement($id));
                 journal_action('ETAB_UPDATE', $id, $data['uai'] . ' ' . $data['nom']);
                 $pdo->commit();
                 flash('success', 'Établissement mis à jour.');
@@ -86,6 +87,7 @@ if (is_post()) {
                 $params
             );
             $newId = (int)$pdo->lastInsertId();
+            etablissement_mail_domain_sync(etablissement($newId));
             journal_action('ETAB_CREATE', $newId, $data['uai'] . ' ' . $data['nom']);
 
             $msg = "Établissement « {$data['nom']} » créé.";

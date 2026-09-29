@@ -27,6 +27,10 @@ CREATE DATABASE IF NOT EXISTS reseau_certa
     DEFAULT CHARACTER SET utf8mb4
     COLLATE utf8mb4_unicode_ci;
 
+CREATE DATABASE IF NOT EXISTS mailserver
+    DEFAULT CHARACTER SET utf8mb4
+    COLLATE utf8mb4_unicode_ci;
+
 USE reseau_certa;
 
 DROP TRIGGER IF EXISTS trg_utilisateur_bi;
@@ -74,6 +78,7 @@ CREATE TABLE etablissement (
     pays            VARCHAR(100) NOT NULL DEFAULT 'France',
 
     academie_id     BIGINT UNSIGNED NOT NULL,
+    virtual_domain_id INT NULL,
     actif           BOOLEAN NOT NULL DEFAULT TRUE,
 
     created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -81,6 +86,7 @@ CREATE TABLE etablissement (
 
     PRIMARY KEY (id),
     UNIQUE KEY uq_etablissement_uai (uai),
+    UNIQUE KEY uq_etablissement_virtual_domain (virtual_domain_id),
     KEY idx_etablissement_academie (academie_id),
 
     CONSTRAINT chk_etablissement_uai CHECK (uai REGEXP '^[0-9]{7}[A-Z]$'),
@@ -132,6 +138,7 @@ CREATE TABLE utilisateur (
     actif                  BOOLEAN NOT NULL DEFAULT TRUE,
 
     etablissement_id       BIGINT UNSIGNED NULL,  -- NULL uniquement pour le SUPER_ADMIN
+    virtual_user_id        INT NULL,
 
     derniere_connexion_at  TIMESTAMP NULL DEFAULT NULL,
     created_at             TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -139,11 +146,51 @@ CREATE TABLE utilisateur (
 
     PRIMARY KEY (id),
     UNIQUE KEY uq_utilisateur_email (email),
+    UNIQUE KEY uq_utilisateur_virtual_user (virtual_user_id),
     KEY idx_utilisateur_etab_nom (etablissement_id, nom, prenom),
 
     CONSTRAINT fk_utilisateur_etablissement
         FOREIGN KEY (etablissement_id) REFERENCES etablissement(id)
         ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+-- =====================================================
+-- DOMAINES ET COMPTES VIRTUELS POSTFIX / DOVECOT
+-- Les références applicatives sont stockées dans etablissement/utilisateur.
+-- =====================================================
+
+CREATE TABLE IF NOT EXISTS mailserver.virtual_domains (
+    id      INT NOT NULL AUTO_INCREMENT,
+    name    VARCHAR(50) NOT NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_virtual_domains_name (name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS mailserver.virtual_users (
+    id          INT NOT NULL AUTO_INCREMENT,
+    domain_id   INT NOT NULL,
+    email       VARCHAR(100) NOT NULL,
+    password    VARCHAR(150) NOT NULL,
+    quota       BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_virtual_users_email (email),
+    KEY idx_virtual_users_domain (domain_id),
+    CONSTRAINT fk_virtual_users_domain
+        FOREIGN KEY (domain_id) REFERENCES mailserver.virtual_domains(id)
+        ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS mailserver.virtual_aliases (
+    id          INT NOT NULL AUTO_INCREMENT,
+    domain_id   INT NOT NULL,
+    source      VARCHAR(100) NOT NULL,
+    destination VARCHAR(100) NOT NULL,
+    PRIMARY KEY (id),
+    KEY idx_virtual_aliases_domain (domain_id),
+    CONSTRAINT fk_virtual_aliases_domain
+        FOREIGN KEY (domain_id) REFERENCES mailserver.virtual_domains(id)
+        ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 

@@ -143,6 +143,162 @@ function user_dans_etab(int $userId, int $etabId): ?array
 
 // ---------- Écriture ----------
 
+function etablissement_mail_domain_sync(array $etab): int
+{
+    $name = uai_domaine((string)$etab['uai']);
+    $etabId = (int)($etab['etablissement_id'] ?? $etab['id']);
+    $domainId = null;
+
+    if (!empty($etab['virtual_domain_id'])) {
+        $domainId = db_value(
+            'SELECT id FROM mailserver.virtual_domains WHERE id = ?',
+            [(int)$etab['virtual_domain_id']]
+        );
+    }
+    if (!$domainId) {
+        $domainId = db_value('SELECT id FROM mailserver.virtual_domains WHERE name = ?', [$name]);
+    }
+    if ($domainId) {
+        db_exec('UPDATE mailserver.virtual_domains SET name = ? WHERE id = ?', [$name, $domainId]);
+    } else {
+        db_exec('INSERT INTO mailserver.virtual_domains (name) VALUES (?)', [$name]);
+        $domainId = (int)db()->lastInsertId();
+    }
+
+    db_exec('UPDATE etablissement SET virtual_domain_id = ? WHERE id = ?', [$domainId, $etabId]);
+    return (int)$domainId;
+}
+
+function mailserver_password_hash(string $password): string
+{
+    $hash = password_hash($password, PASSWORD_BCRYPT);
+    if ($hash === false) {
+        throw new RuntimeException('Impossible de chiffrer le mot de passe pour Dovecot.');
+    }
+    return '{BLF-CRYPT}' . $hash;
+}
+
+/** Synchronise une boîte Postfix avec le mot de passe en clair connu à cette étape. */
+function user_mail_sync(int $userId, string $password): void
+{
+    $pdo = db();
+    $startedTransaction = !$pdo->inTransaction();
+    if ($startedTransaction) {
+        $pdo->beginTransaction();
+    }
+    try {
+        $user = db_one(
+            'SELECT u.id, u.email, u.etablissement_id, u.virtual_user_id, e.uai, e.virtual_domain_id
+               FROM utilisateur u
+               JOIN etablissement e ON e.id = u.etablissement_id
+              WHERE u.id = ?',
+            [$userId]
+        );
+        if (!$user) {
+            if ($startedTransaction) {
+                $pdo->commit();
+            }
+            return;
+        }
+        if (mb_strlen($user['email']) > 100) {
+            throw new ValidationException('L’adresse email générée dépasse la limite de 100 caractères de la table Postfix.');
+        }
+
+        $domainId = etablissement_mail_domain_sync($user);
+        $mailUser = !empty($user['virtual_user_id'])
+            ? db_one('SELECT id, domain_id, email, password, quota FROM mailserver.virtual_users WHERE id = ?', [(int)$user['virtual_user_id']])
+            : null;
+        if (!$mailUser) {
+            $mailUser = db_one('SELECT id, domain_id, email, password, quota FROM mailserver.virtual_users WHERE email = ?', [$user['email']]);
+        }
+
+        if ($mailUser
+            && (int)$mailUser['domain_id'] === $domainId
+            && $mailUser['email'] === $user['email']
+            && (int)$mailUser['quota'] === 10 * 1024 * 1024
+            && str_starts_with($mailUser['password'], '{BLF-CRYPT}')
+            && password_verify($password, substr($mailUser['password'], strlen('{BLF-CRYPT}')))) {
+            $mailUserId = (int)$mailUser['id'];
+        } else {
+            $hash = mailserver_password_hash($password);
+            if ($mailUser) {
+                db_exec(
+                    'UPDATE mailserver.virtual_users SET domain_id = ?, email = ?, password = ?, quota = ? WHERE id = ?',
+                    [$domainId, $user['email'], $hash, 10 * 1024 * 1024, $mailUser['id']]
+                );
+                $mailUserId = (int)$mailUser['id'];
+            } else {
+                db_exec(
+                    'INSERT INTO mailserver.virtual_users (domain_id, email, password, quota) VALUES (?, ?, ?, ?)',
+                    [$domainId, $user['email'], $hash, 10 * 1024 * 1024]
+                );
+                $mailUserId = (int)$pdo->lastInsertId();
+            }
+        }
+
+        if ((int)($user['virtual_user_id'] ?? 0) !== $mailUserId) {
+            db_exec('UPDATE utilisateur SET virtual_user_id = ? WHERE id = ?', [$mailUserId, $userId]);
+        }
+        if ($startedTransaction) {
+            $pdo->commit();
+        }
+    } catch (Throwable $e) {
+        if ($startedTransaction && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
+    }
+}
+
+/** Met à jour l'adresse/domain d'une boîte sans modifier son mot de passe. */
+function user_mail_address_sync(int $userId): void
+{
+    $user = db_one(
+        'SELECT u.email, u.etablissement_id, u.virtual_user_id, e.uai, e.virtual_domain_id
+           FROM utilisateur u
+           JOIN etablissement e ON e.id = u.etablissement_id
+          WHERE u.id = ?',
+        [$userId]
+    );
+    if (!$user || empty($user['virtual_user_id'])) {
+        return;
+    }
+    if (mb_strlen($user['email']) > 100) {
+        throw new ValidationException('L’adresse email générée dépasse la limite de 100 caractères de la table Postfix.');
+    }
+
+    $domainId = etablissement_mail_domain_sync($user);
+    db_exec(
+        'UPDATE mailserver.virtual_users SET domain_id = ?, email = ? WHERE id = ?',
+        [$domainId, $user['email'], $user['virtual_user_id']]
+    );
+}
+
+function user_mail_delete_many(array $userIds): void
+{
+    if (!$userIds) {
+        return;
+    }
+    $placeholders = implode(',', array_fill(0, count($userIds), '?'));
+    $mailUserIds = db_all(
+        "SELECT virtual_user_id FROM utilisateur WHERE id IN ($placeholders) AND virtual_user_id IS NOT NULL",
+        $userIds
+    );
+    $mailIds = array_map('intval', array_column($mailUserIds, 'virtual_user_id'));
+    if ($mailIds) {
+        $mailPlaceholders = implode(',', array_fill(0, count($mailIds), '?'));
+        db_exec("DELETE FROM mailserver.virtual_users WHERE id IN ($mailPlaceholders)", $mailIds);
+    }
+}
+
+function etablissement_mail_domain_delete(int $etabId): void
+{
+    $domainId = db_value('SELECT virtual_domain_id FROM etablissement WHERE id = ?', [$etabId]);
+    if ($domainId) {
+        db_exec('DELETE FROM mailserver.virtual_domains WHERE id = ?', [$domainId]);
+    }
+}
+
 /**
  * Crée un utilisateur. Retourne ['id', 'email', 'email_personnel', 'password'].
  * @throws ValidationException
@@ -170,6 +326,9 @@ function user_create(
     }
 
     $email = email_generer($prenom, $nom, $etab['uai'], $reserves);
+    if (mb_strlen($email) > 100) {
+        throw new ValidationException('L’adresse email générée dépasse la limite de 100 caractères de la table Postfix.');
+    }
     $password = random_password();
 
     db_exec(
@@ -178,6 +337,7 @@ function user_create(
         [$prenom, $nom, $email, $emailPersonnel, $etudes['classe'], $etudes['annee_bts'], password_hash($password, PASSWORD_DEFAULT), $etab['id']]
     );
     $id = (int)db()->lastInsertId();
+    user_mail_sync($id, $password);
 
     db_exec('INSERT INTO utilisateur_role (utilisateur_id, role_id) VALUES (?, ?)', [$id, role_id($roleBase)]);
     if ($admin) {
@@ -208,6 +368,9 @@ function user_update(
     $email = $prenom === $user['prenom'] && $nom === $user['nom']
         ? $user['email']
         : email_generer($prenom, $nom, $etab['uai'], [], (int)$user['id']);
+    if (mb_strlen($email) > 100) {
+        throw new ValidationException('L’adresse email générée dépasse la limite de 100 caractères de la table Postfix.');
+    }
 
     if ($roleBase === ROLE_STUDENT && in_array(ROLE_ADMIN, $user['roles'], true)) {
         throw new ValidationException('Un administrateur d\'établissement doit rester enseignant.');
@@ -217,6 +380,7 @@ function user_update(
         'UPDATE utilisateur SET prenom = ?, nom = ?, email = ?, email_personnel = ?, classe = ?, annee_bts = ?, actif = ? WHERE id = ?',
         [$prenom, $nom, $email, $emailPersonnel, $etudes['classe'], $etudes['annee_bts'], $actif ? 1 : 0, $user['id']]
     );
+    user_mail_address_sync((int)$user['id']);
     user_set_role_base((int)$user['id'], $roleBase);
 }
 
@@ -244,10 +408,21 @@ function user_set_admin(int $userId, bool $admin): void
 function user_reset_password(int $userId): string
 {
     $password = random_password();
-    db_exec(
-        'UPDATE utilisateur SET password_hash = ?, doit_changer_mdp = 1 WHERE id = ?',
-        [password_hash($password, PASSWORD_DEFAULT), $userId]
-    );
+    $pdo = db();
+    $pdo->beginTransaction();
+    try {
+        db_exec(
+            'UPDATE utilisateur SET password_hash = ?, doit_changer_mdp = 1 WHERE id = ?',
+            [password_hash($password, PASSWORD_DEFAULT), $userId]
+        );
+        user_mail_sync($userId, $password);
+        $pdo->commit();
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $e;
+    }
     return $password;
 }
 

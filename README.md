@@ -9,6 +9,12 @@ leurs étudiants et enseignants, avec adresses `prenom.nom@<UAI>.reseaucerta.org
    (ou importer le fichier dans phpMyAdmin).
 2. Adapter `config/config.php` (ou créer `config/config.local.php` qui renvoie
    uniquement les clés à surcharger).
+   La connexion applicative doit pouvoir lire et modifier les tables de la base
+   `mailserver` sur le même serveur MySQL. Le schéma initial crée cette base et
+   les tables Postfix ; pour une installation déjà en service, appliquer une
+   fois `database/migration_mailserver.sql`. Le compte SQL de l'application
+   doit avoir les droits `SELECT`, `INSERT`, `UPDATE` et `DELETE` sur
+   `mailserver.*`.
 3. Pointer la racine web (DocumentRoot) sur `public/`.
    Sous WAMP sans virtual host : `'base_url' => '/CERTA-Microsoft/public'`.
 4. Créer le super admin :
@@ -29,9 +35,21 @@ personnelle distincte peut être renseignée pour les étudiants et enseignants 
 elle est facultative pour les étudiants, obligatoire pour les enseignants et
 administrateurs. Les imports CSV
 acceptent `email_personnel` (ou l'ancien en-tête `email`) comme adresse de contact.
+Chaque établissement est associé à une entrée `mailserver.virtual_domains` nommée
+`<uai>.reseaucerta.org` (sans `@`, format attendu par Postfix). Chaque compte
+d'établissement est associé à une entrée `mailserver.virtual_users`, avec un
+quota de 10 MiB (`10485760` octets). Le mot de passe est synchronisé lors de sa
+création, de sa réinitialisation, de son changement ou d'une connexion réussie,
+au format Dovecot `{BLF-CRYPT}` (bcrypt). Les utilisateurs déjà présents lors de
+la migration sont provisionnés à leur prochaine connexion ou mise à jour de mot
+de passe : leur ancien hash applicatif ne permet pas de recalculer le hash
+Dovecot sans connaître le mot de passe en clair.
+Si `mail_domain` est personnalisé, adapter la variable `@mail_domain` dans la
+migration avant de l'exécuter.
 Pour une base existante, appliquer une fois `database/migration_email_personnel.sql`.
 Appliquer ensuite une fois `database/migration_etablissement_type_classe_bts.sql`
-pour ajouter le type d'établissement et les informations de classe/BTS.
+et `database/migration_mailserver.sql` pour ajouter le type d'établissement, les
+informations de classe/BTS et les liens Postfix.
 
 Les étudiants doivent avoir un nom de classe et une année de passage du BTS
 (année sur quatre chiffres, de 1900 à 2200). Ces informations sont disponibles
